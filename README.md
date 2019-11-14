@@ -7,6 +7,7 @@ Link for original data sets and course website [template in C++](http://mrl.cs.v
  - tensorflow 2.0
  - numpy
  - keras
+ - opencv >= 4.0.0
 
 ## How run
 python main.py
