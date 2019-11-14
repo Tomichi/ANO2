@@ -1,5 +1,12 @@
-# ANO2
+# Analysis of image 2 at Technical University Ostrava
 Semestral work - Parking lot detection
-Analysis of image 2
 
-Link for original data sets [template in C++](http://mrl.cs.vsb.cz/people/fusek/ano2_course.html)
+Link for original data sets and course website [template in C++](http://mrl.cs.vsb.cz/people/fusek/ano2_course.html)
+
+## Requirements 
+ - tensorflow 2.0
+ - numpy
+ - keras
+
+## How run
+python main.py
