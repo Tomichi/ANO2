@@ -1,12 +1,14 @@
 import cv2
 import numpy as np
 import re
+import os
 from pathlib import Path
 from polygon import Polygon
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Flatten
-from keras.layers import Conv2D, AveragePooling2D
+from keras.layers import Conv2D, AveragePooling2D, MaxPooling2D
 from keras import backend as K
+from keras.models import model_from_json
 from keras.losses import binary_crossentropy
 
 
@@ -33,7 +35,8 @@ def load_parking_geometry(file):
 
 def extract_space(src_image, parking_geometry, output_size):
     output_images = []
-    #cv2.equalizeHist(src_image, src_image)
+    #clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+    #src_image = clahe.apply(src_image)
     for polygon in parking_geometry:
         point1, point2, point3, point4 = map(list, polygon.points)
         source = np.array([list(point1), list(point2), list(point3), list(point4)], np.float32)
@@ -47,6 +50,8 @@ def extract_space(src_image, parking_geometry, output_size):
         Gy = cv2.Sobel(blur,cv2.CV_32F, 0, 1, 3)
         Gy = cv2.convertScaleAbs(Gy)
         G = cv2.addWeighted(Gx, 0.5, Gy, 0.5, 0)
+        G = cv2.medianBlur(G, 11)
+        #G = cv2.Canny(blur, 150, 250)
         output_images.append(G)
     return output_images
 
@@ -111,12 +116,11 @@ def test_parking(parking_geometry, image_size, model):
             predicts = model.predict(out_images)
             predict_labels = []
             for iteration in range(geometry_size):
-                value = 1 if predicts[iteration][0] > 0.7 else 0
+                value = 1 if predicts[iteration][0] > 0.5 else 0
                 predict_labels.append(value)
             parking = draw_circles(parking_color_image, parking_geometry, predict_labels)
             cv2.imshow("Img", parking)
             cv2.waitKey(0)
-        #   images.extend(parking_chunk_images)
             test_labels.extend(predict_labels)
     evaluation(labels, test_labels)
 
@@ -151,23 +155,46 @@ def init_CNN(train_images, train_labels, test_images, test_labels, image_size):
 
     model = Sequential()
     model.add(Conv2D(6, kernel_size=(3, 3), activation='relu', input_shape=input_shape))
-    model.add(Conv2D(16, kernel_size=(3, 3), activation='relu'))
-    model.add(AveragePooling2D(pool_size=(2, 2)))
-    model.add(Dropout(0.15))
+    model.add(AveragePooling2D(pool_size=(3, 3)))
+    model.add(Conv2D(20, kernel_size=(3, 3), activation='relu'))
+    model.add(MaxPooling2D(pool_size=(3, 3)))
+    model.add(Dropout(0.20))
     model.add(Flatten())
-    model.add(Dense(200, activation='relu'))
-    model.add(Dropout(0.2))
+    model.add(Dense(160, activation='relu'))
+    model.add(Dropout(0.25))
     model.add(Dense(30, activation='relu'))
+    model.add(Dropout(0.1))
     model.add(Dense(1, activation='sigmoid'))
-    model.compile(loss=binary_crossentropy, optimizer="adadelta", metrics=['accuracy'])
-    model.fit(train_images, train_labels, batch_size=300, epochs=6, verbose=1,
+    model.compile(loss=binary_crossentropy, optimizer="Adam", metrics=['accuracy'])
+    model.fit(train_images, train_labels, batch_size=600, epochs=20, verbose=1,
               validation_data=(test_images, test_labels))
     score = model.evaluate(test_images, test_labels, verbose=0)
     print('Test loss:', score[0])
     print('Test accuracy:', score[1])
     model.summary()
 
+    return model, score
+
+
+def save_model(model, accuracy):
+    model_json_file = 'models/model' + str(accuracy) + '.json'
+    model_hdf5_file = 'models/model' + str(accuracy) + '.h5'
+    print(f" file saved json {model_json_file} file hdf5 {model_hdf5_file}")
+    with open(model_json_file, 'w') as json_file:
+        json_file.write(model.to_json())
+    model.save_weights(model_hdf5_file)
+    print("saved")
+
+
+def load_model(file_model_path, file_weights_path):
+    model_file  = open(file_model_path, 'r')
+    model_json = model_file.read()
+    model_file.close()
+    model =  model_from_json(model_json)
+    model.load_weights(file_weights_path)
+    model.compile(loss=binary_crossentropy, optimizer="Adam", metrics=['accuracy'])
     return model
+
 
 def main():
     small_image_size = (80, 80)
@@ -176,11 +203,13 @@ def main():
     train_images, train_labels = train_parking(parking_geometry, small_image_size)
     print("Preprocessing test images - OpenCv start")
     test_images, test_labels = test_parking_for_neural(parking_geometry, small_image_size)
+    #CNN TRAIN BEGIN
+    #model, score = init_CNN(train_images, train_labels, test_images, test_labels, small_image_size)
+    #save_model(model, score[1])
 
-    #CNN BEGIN
-    model = init_CNN(train_images, train_labels, test_images, test_labels, small_image_size)
+    model = load_model('models/model0.9836309552192688.json', 'models/model0.9836309552192688.h5')
     print("Test OpenCv start")
     test_parking(parking_geometry, small_image_size, model)
     #test_parking(parking_geometry, small_image_size)
-
-main()
+if __name__=="__main__":
+    main()
